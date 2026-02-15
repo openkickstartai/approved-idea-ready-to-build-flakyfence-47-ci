@@ -6,8 +6,12 @@ setup(
     description="Test pollution bisection & shared state forensics engine",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    py_modules=["flakyfence"],
-    entry_points={"console_scripts": ["flakyfence=flakyfence:main"]},
+    py_modules=["flakyfence", "flakyfence_plugin"],
+    entry_points={
+        "console_scripts": ["flakyfence=flakyfence:main"],
+        "pytest11": ["flakyfence = flakyfence_plugin"],
+    },
+
     install_requires=["pytest>=7.0"],
     python_requires=">=3.8",
     author="FlakyFence",
