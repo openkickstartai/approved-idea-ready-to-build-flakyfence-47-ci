@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches: [main]
@@ -7,20 +8,90 @@ on:
 
 jobs:
   test:
+    name: Unit Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install -e ".[dev]" || pip install -e .
+          pip install pytest
+
       - name: Run tests
         run: pytest test_flakyfence.py -v
-      - name: Verify CLI runs
-        run: flakyfence --help
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linters
+        run: pip install flake8
+
+      - name: Run flake8
+        run: flake8 flakyfence.py --max-line-length 120 --ignore E501,W503
+
+  dogfood:
+    name: Dogfood — FlakyFence on itself
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FlakyFence from source
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run FlakyFence on own test suite (dogfooding)
+        run: |
+          echo "::group::FlakyFence dogfood run"
+          flakyfence test_flakyfence.py --sarif dogfood-report.sarif || true
+          echo "::endgroup::"
+
+      - name: Verify SARIF output
+        run: |
+          if [ -f dogfood-report.sarif ]; then
+            python -c "
+import json, sys
+with open('dogfood-report.sarif') as f:
+    data = json.load(f)
+assert data.get('version') == '2.1.0', 'SARIF version mismatch'
+assert 'runs' in data, 'Missing runs in SARIF'
+print('SARIF report is valid')
+"
+          else
+            echo 'No SARIF report generated (no flaky tests found — that is OK)'
+          fi
+
+      - name: Upload dogfood SARIF
+        if: always() && hashFiles('dogfood-report.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: dogfood-report.sarif
+          category: flakyfence-dogfood

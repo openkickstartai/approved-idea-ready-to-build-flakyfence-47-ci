@@ -1,0 +1,47 @@
+# Reusable workflow — other repos can call this via:
+#   uses: flakyfence/flakyfence/.github/workflows/flakyfence-action.yml@main
+
+name: FlakyFence Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version to use'
+        type: string
+        default: '3.11'
+      test-path:
+        description: 'Path to test directory or specific test files'
+        type: string
+        default: 'tests/'
+      sarif-upload:
+        description: 'Upload SARIF report to GitHub Code Scanning'
+        type: boolean
+        default: false
+      runs-on:
+        description: 'Runner label'
+        type: string
+        default: 'ubuntu-latest'
+    secrets:
+      license-key:
+        description: 'FlakyFence Pro license key'
+        required: false
+
+jobs:
+  flakyfence:
+    name: FlakyFence Analysis
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+
+      - name: Run FlakyFence
+        uses: flakyfence/flakyfence@main
+        with:
+          python-version: ${{ inputs.python-version }}
+          test-path: ${{ inputs.test-path }}
+          license-key: ${{ secrets.license-key }}
+          sarif-upload: ${{ inputs.sarif-upload && 'true' || 'false' }}
