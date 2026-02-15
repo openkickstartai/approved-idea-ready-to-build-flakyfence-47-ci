@@ -1,0 +1,59 @@
+name: 'FlakyFence'
+description: 'Test pollution bisection & shared state forensics — find which test broke yours in O(log n) runs'
+author: 'FlakyFence'
+
+branding:
+  icon: 'shield'
+  color: 'orange'
+
+inputs:
+  python-version:
+    description: 'Python version to use for running FlakyFence'
+    required: false
+    default: '3.11'
+  test-path:
+    description: 'Path to test directory or specific test files'
+    required: false
+    default: 'tests/'
+  license-key:
+    description: 'FlakyFence Pro license key — enables unlimited analysis and SARIF output'
+    required: false
+    default: ''
+  sarif-upload:
+    description: 'Upload SARIF report to GitHub Code Scanning (requires security-events: write permission)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install FlakyFence
+      shell: bash
+      run: pip install flakyfence
+
+    - name: Run FlakyFence analysis
+      shell: bash
+      env:
+        FLAKYFENCE_LICENSE_KEY: ${{ inputs.license-key }}
+      run: |
+        echo "::group::FlakyFence pollution analysis"
+        flakyfence ${{ inputs.test-path }} --sarif report.sarif || FLAKY_EXIT=$?
+        echo "::endgroup::"
+        if [ -f report.sarif ]; then
+          echo "SARIF report generated at report.sarif"
+        fi
+        # Exit 0 = no flaky tests found, Exit 1 = flaky tests detected
+        # Both are valid outcomes; we surface the report either way
+        exit ${FLAKY_EXIT:-0}
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.sarif-upload == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: report.sarif
+        category: flakyfence
